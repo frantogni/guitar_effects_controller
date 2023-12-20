@@ -1,0 +1,332 @@
+;@ DEVICE pic16F886, INTRC_OSC_NOCLKOUT
+;@ DEVICE pic16F886, WDT_OFF     ' Watchdog Timer desconectado.-
+;@ DEVICE pic16F886, PWRT_ON     ' Power-On Timer conectado.- 
+;@ DEVICE pic16F886, BOD_OFF     ' Brown-Out Detect desconectado.- 
+;@ DEVICE pic16F886, MCLR_OFF    ' Master Clear Externo desconectado.-
+;@ DEVICE pic16F886, CPD_OFF     ' Data Memory Code Protect desconectado.-
+;@ DEVICE pic16F886, PROTECT_OFF ' Program Code Protect desconectado.-
+;@ DEVICE pic16F886, IESO_OFF    ' Internal External Switchover mode disabled
+;@ DEVICE pic16F886, FCMEN_OFF   ' Fail-safe Clock Monitor disabled
+@__config _CONFIG1, _INTRC_OSC_NOCLKOUT & _WDT_OFF & _PWRTE_ON & _MCLRE_OFF & _CPD_OFF & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
+
+OSCCON      = %01110111
+TRISA       = %00011111
+TRISB       = %00000001                 
+TRISC       = %00000000                 
+OPTION_REG  = %10000000        
+INTCON      = %00000000
+IOCB        = %00000000
+PIE1        = %00000000
+PIE2        = %00000000
+PIR1        = %00000000
+PIR2        = %00000000
+IOCB        = %00000000
+ADCON0      = %10000000 
+ADCON1      = %10000000 
+ANSEL       = %00000000 
+ANSELH      = %00000000
+CM1CON0     = %00000000
+CM2CON0     = %00000000
+SRCON       = %00000000
+CCP1CON     = %00000000
+CCP2CON     = %00000000
+
+DATA @0,0(255)                           
+
+on interrupt goto INTERRUPCION        
+
+DEFINE  LCD_DREG        PORTB
+DEFINE  LCD_DBIT        4
+DEFINE  LCD_BITS        4
+DEFINE  LCD_RSREG       PORTB
+DEFINE  LCD_RSBIT       2
+DEFINE  LCD_EREG        PORTB
+DEFINE  LCD_EBIT        3
+DEFINE  LCD_LINES       4
+DEFINE  LCD_COMMANDUS   2000  
+DEFINE  LCD_DATAUS      50
+
+BC1     VAR PORTA.0
+BC2     VAR PORTA.1
+FX1     VAR PORTA.2
+FX2     VAR PORTA.3
+MODE    VAR PORTA.4
+RLY_F   VAR PORTA.5
+FSW1    VAR PORTA.6
+FSW2    VAR PORTA.7
+
+LED_PST1    VAR PORTB.4
+LED_PST2    VAR PORTB.5
+LED_PST3    VAR PORTB.6
+LED_PST4    VAR PORTB.7
+
+MODO        VAR BIT
+NUMERO      VAR BYTE
+PRESET      var byte
+BANCO       VAR BYTE
+EFECTO      VAR BYTE[40]
+INDICE      var byte
+AUXILIAR    VAR BYTE
+CONTADOR    VAR BYTE
+
+    FOR indice = 0 TO 40
+        READ indice,EFECTO[indice]
+ESPERA: IF EECON1.0 = 1 THEN ESPERA
+    NEXT    
+
+PORTB       = 0
+PORTC       = 0
+INDICE      = 0
+PRESET      = 0
+BANCO       = 0
+MODO        = 0
+AUXILIAR    = 0
+CONTADOR    = 0
+
+    lcdout $FE,1
+    LCDOUT $FE,64,$1F,$11,$11,$11,$11,$11,$1F,0    
+    LCDOUT $FE,72,$1F,$1F,$1F,$1F,$1F,$1F,$1F,0       
+    LCDOUT $FE,80,$C, $12,$12,$C ,$0 ,$0 ,$0 ,0
+    LCDOUT $FE,88,$0 ,$0 ,$1 ,$2 ,$14,$8 ,$0 ,0
+    LCDOUT $FE,96,$3 ,$3 ,$10,$8 ,$4 ,$3 ,$3 ,0
+    LCDOUT $FE,104,$3,$3 ,$4 ,$4 ,$4 ,$3 ,$3 ,0    
+           
+    GOSUB ACTUALIZAR
+    LCDOUT $FE,$c4,"  CHORUS",$FE,$8D,4," ",4
+    stop    
+                        
+MAIN:        
+    IF BC1      = 0 THEN              
+        if modo = 0 then
+            PRESET  = 0              
+        else
+            BANCO  = BANCO - 1
+            IF BANCO = 255 THEN BANCO = 9                
+        endif
+        GOSUB ACTUALIZAR                    
+        GOSUB AR
+    ENDIF
+    
+    IF BC2      = 0 THEN
+        if modo = 0 then
+            PRESET  = 1                         
+        else
+            BANCO  = BANCO + 1
+            IF BANCO = 10 THEN BANCO = 0       
+        endif
+        GOSUB ACTUALIZAR               
+        GOSUB AR
+    ENDIF
+    
+    IF FX1      = 0 THEN
+        if modo = 0 then        
+            PRESET  = 2              
+        else
+            PRESET = PRESET - 1
+            if PRESET = 255 then
+                PRESET = 3
+                banco = banco -1                
+                if banco = 255 then banco = 9               
+            endif             
+        endif
+        GOSUB ACTUALIZAR        
+        GOSUB AR
+    ENDIF
+    
+    IF FX2      = 0 THEN
+        if modo = 0 then
+            PRESET  = 3
+        else
+            PRESET = PRESET + 1
+            if PRESET = 4 then
+                PRESET = 0                
+                banco = banco + 1               
+                if banco = 10 then banco = 0                
+            endif      
+        endif                      
+        GOSUB ACTUALIZAR        
+        GOSUB AR
+    ENDIF
+    
+    IF MODE = 0 THEN
+        CONTADOR = 0 
+ESP:    CONTADOR = CONTADOR + 1
+        IF CONTADOR > 20 THEN
+            LCDOUT $FE,$80,"SET",$FE,$c4,"       ",%01011110
+            IF PRESET = 0 THEN PORTB = 0 : PORTB.4 = 1
+            IF PRESET = 1 THEN PORTB = 0 : PORTB.5 = 1
+            IF PRESET = 2 THEN PORTB = 0 : PORTB.6 = 1
+            IF PRESET = 3 THEN PORTB = 0 : PORTB.7 = 1            
+            gosub AR         
+            GOSUB SETEO
+            CONTADOR = 0
+            GOTO MAIN
+        ENDIF       
+        IF (MODE = 1) THEN
+            IF (CONTADOR < 20) THEN
+                TOGGLE MODO
+                IF MODO = 0 THEN LCDOUT $FE,$80,"PST"            
+                IF MODO = 1 THEN LCDOUT $FE,$80,"SEC"
+                IF PRESET = 0 THEN PORTB = 0 : PORTB.4 = 1
+                IF PRESET = 1 THEN PORTB = 0 : PORTB.5 = 1
+                IF PRESET = 2 THEN PORTB = 0 : PORTB.6 = 1
+                IF PRESET = 3 THEN PORTB = 0 : PORTB.7 = 1                            
+            ENDIF            
+            CONTADOR = 0
+            GOTO MAIN
+        ENDIF
+        PAUSE 50        
+        goto ESP
+    ENDIF
+    
+    GOTO MAIN                    
+                           
+
+ACTUALIZAR:    
+    INDICE = PRESET + (banco * 4)
+    PORTC = EFECTO[INDICE]    
+    IF MODO = 0 THEN LCDOUT $FE,$80,"PST"            
+    IF MODO = 1 THEN LCDOUT $FE,$80,"SEC"         
+    LCDOUT $FE,$84,portc.7,portc.6,portc.5,portc.4,portc.3,portc.2,portc.1,portc.0
+    LCDOUT $FE,$C0,dec banco,".", dec (PRESET + 1)
+    IF PRESET = 0 THEN PORTB = 0 : PORTB.4 = 1
+    IF PRESET = 1 THEN PORTB = 0 : PORTB.5 = 1
+    IF PRESET = 2 THEN PORTB = 0 : PORTB.6 = 1
+    IF PRESET = 3 THEN PORTB = 0 : PORTB.7 = 1                                  
+RETURN
+
+AR:                                                          
+    repeat  
+        pause 50
+    until ((BC1=1)and(BC2=1)and(FX1=1)and(FX2=1)and(MODE=1))     
+    RETURN
+    
+SETEO:    
+    auxiliar = EFECTO[INDICE]    
+    numero = 0                       
+    
+ESP_2:          
+        IF fx1 = 0 THEN
+            numero = numero + 1
+            IF numero => 8 THEN numero = 0
+            
+            select case numero
+                case is = 0
+                    lcdout $fe,$c3,"        ",%01011110
+                case is = 1
+                    lcdout $fe,$c3,"       ",%01011110," "
+                case is = 2
+                    lcdout $fe,$c3,"      ",%01011110,"  "
+                case is = 3
+                    lcdout $fe,$c3,"     ",%01011110,"   "
+                case is = 4
+                    lcdout $fe,$c3,"    ",%01011110,"    "
+                case is = 5
+                    lcdout $fe,$c3,"   ",%01011110,"     "
+                case is = 6
+                    lcdout $fe,$c3,"  ",%01011110,"      "
+                case is = 7
+                    lcdout $fe,$c3," ",%01011110,"       "
+            end select
+            IF PRESET = 0 THEN PORTB = 0 : PORTB.4 = 1
+            IF PRESET = 1 THEN PORTB = 0 : PORTB.5 = 1
+            IF PRESET = 2 THEN PORTB = 0 : PORTB.6 = 1
+            IF PRESET = 3 THEN PORTB = 0 : PORTB.7 = 1                                                                                                                    
+            repeat 
+                PAUSE 50
+            until fx1 = 1                                        
+        ENDIF
+        
+        
+        IF fx2 = 0 THEN
+            numero = numero - 1
+            IF numero = 255 THEN numero = 7
+            select case numero
+                case is = 0
+                    lcdout $fe,$c3,"        ",%01011110
+                case is = 1
+                    lcdout $fe,$c3,"       ",%01011110," "
+                case is = 2
+                    lcdout $fe,$c3,"      ",%01011110,"  "
+                case is = 3
+                    lcdout $fe,$c3,"     ",%01011110,"   "
+                case is = 4
+                    lcdout $fe,$c3,"    ",%01011110,"    "
+                case is = 5
+                    lcdout $fe,$c3,"   ",%01011110,"     "
+                case is = 6
+                    lcdout $fe,$c3,"  ",%01011110,"      "
+                case is = 7
+                    lcdout $fe,$c3," ",%01011110,"       "
+            end select
+            IF PRESET = 0 THEN PORTB = 0 : PORTB.4 = 1
+            IF PRESET = 1 THEN PORTB = 0 : PORTB.5 = 1
+            IF PRESET = 2 THEN PORTB = 0 : PORTB.6 = 1
+            IF PRESET = 3 THEN PORTB = 0 : PORTB.7 = 1                                     
+            repeat  
+                PAUSE 50
+            until fx2 = 1                 
+        ENDIF
+        
+        
+        IF mode = 0 THEN
+            CONTADOR = 0
+ESP_3:      CONTADOR = CONTADOR + 1
+            IF (CONTADOR > 20) THEN
+                if AUXILIAR <> EFECTO[INDICE] then 
+                    WRITE INDICE,AUXILIAR     
+                    PAUSE 10
+                    EFECTO[INDICE] = AUXILIAR
+                endif
+                IF MODO = 0 THEN LCDOUT $FE,$80,"PST"
+                IF MODO = 1 THEN LCDOUT $FE,$80,"SEC"                                               
+                GOSUB ACTUALIZAR             
+                CONTADOR = 0
+                GOSUB AR                    
+                RETURN               
+            ENDIF
+             
+            PAUSE 50
+                  
+            IF (MODE = 1) THEN
+                IF (CONTADOR < 20) THEN
+                    select case numero
+                        case is = 0            
+                            TOGGLE auxiliar.0
+                        case is = 1            
+                            TOGGLE auxiliar.1
+                        case is = 2            
+                            TOGGLE auxiliar.2
+                        case is = 3            
+                            TOGGLE auxiliar.3
+                        case is = 4            
+                            TOGGLE auxiliar.4
+                        case is = 5            
+                            TOGGLE auxiliar.5
+                        case is = 6            
+                            TOGGLE auxiliar.6
+                        case is = 7            
+                            TOGGLE auxiliar.7                        
+                    end select                                                                            
+                    PORTC = auxiliar            
+                    LCDOUT $FE,$84,PORTC.7,PORTC.6,PORTC.5,PORTC.4,PORTC.3,PORTC.2,PORTC.1,PORTC.0
+                    IF PRESET = 0 THEN PORTB = 0 : PORTB.4 = 1
+                    IF PRESET = 1 THEN PORTB = 0 : PORTB.5 = 1
+                    IF PRESET = 2 THEN PORTB = 0 : PORTB.6 = 1
+                    IF PRESET = 3 THEN PORTB = 0 : PORTB.7 = 1                               
+                ENDIF
+                GOTO ESP_2                            
+            ENDIF
+            goto ESP_3
+        ENDIF
+                
+        GOTO ESP_2                                   
+RETURN     
+                                      
+disable
+interrupcion:         
+    INTCON.1    = 0 
+RESUME
+ENABLE 
+
+end
